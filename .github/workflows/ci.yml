@@ -32,3 +32,12 @@ jobs:
       # not used here, because readyproof warns about this workflow's own
       # tag-pinned actions (see the README section on that tradeoff).
       - run: ./target/release/readyproof .
+
+  # The oldest Rust this crate promises to build with (rust-version in
+  # Cargo.toml). A dependency update that needs a newer one fails here.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.88
+      - run: cargo test --locked --all

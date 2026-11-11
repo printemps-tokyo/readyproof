@@ -2,6 +2,7 @@
 name = "readyproof"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.88"
 license = "MIT"
 description = "Audit a git repository for open-source security and compliance readiness. Offline Rust CLI."
 authors = ["printemps.tokyo <develop@printemps.tokyo>"]
