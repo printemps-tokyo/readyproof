@@ -1,7 +1,7 @@
 //! Command-line entry point for readyproof.
 
 use std::io::{IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -56,6 +56,21 @@ struct Cli {
     #[arg(long, value_name = "CHECK_ID")]
     skip: Vec<String>,
 
+    /// Print how each check corresponds to OpenSSF Scorecard and SLSA, and
+    /// exit (with --json, as JSON).
+    #[arg(long, conflicts_with_all = ["fix", "strict", "quiet"])]
+    map: bool,
+
+    /// Create starter files for what is missing (SECURITY.md, CONTRIBUTING.md,
+    /// CODE_OF_CONDUCT.md, .github/dependabot.yml), then audit the result.
+    /// Never overwrites a file and never writes a LICENSE.
+    #[arg(long)]
+    fix: bool,
+
+    /// With --fix, print what would be created and create nothing.
+    #[arg(long, requires = "fix")]
+    dry_run: bool,
+
     /// Never emit ANSI color codes.
     #[arg(long)]
     no_color: bool,
@@ -88,6 +103,16 @@ fn main() {
 fn run() -> Result<i32> {
     let cli = Cli::parse();
 
+    if cli.map {
+        let doc = if cli.json {
+            readyproof::report::render_map_json()
+        } else {
+            readyproof::report::render_map_text()
+        };
+        std::io::stdout().write_all(doc.as_bytes())?;
+        return Ok(0);
+    }
+
     for id in &cli.skip {
         if !check_ids().contains(&id.as_str()) {
             anyhow::bail!(
@@ -107,8 +132,17 @@ fn run() -> Result<i32> {
         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
         .unwrap_or_else(|| cli.path.display().to_string());
 
-    let snapshot = RepoSnapshot::scan(&cli.path, root_name)
+    let mut snapshot = RepoSnapshot::scan(&cli.path, root_name.clone())
         .with_context(|| format!("failed to walk {}", cli.path.display()))?;
+
+    if cli.fix {
+        let plan = readyproof::fix::plan(&snapshot);
+        let created = apply_fix(&cli.path, &plan, cli.dry_run)?;
+        if created {
+            snapshot = RepoSnapshot::scan(&cli.path, root_name)
+                .with_context(|| format!("failed to walk {}", cli.path.display()))?;
+        }
+    }
 
     let report = readyproof::audit(
         &snapshot,
@@ -146,4 +180,64 @@ fn run() -> Result<i32> {
     out.flush()?;
 
     Ok(report.exit_code(cli.strict))
+}
+
+/// Create the planned files (or describe them, with `dry_run`). The log goes to
+/// stderr so stdout stays the report. Returns whether anything was written.
+fn apply_fix(root: &Path, plan: &readyproof::fix::FixPlan, dry_run: bool) -> Result<bool> {
+    let mut wrote = false;
+    for file in &plan.create {
+        let path = root.join(file.path);
+        if dry_run {
+            eprintln!(
+                "readyproof: --fix: would create {}  (for {})",
+                file.path, file.check
+            );
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("cannot create {}", parent.display()))?;
+        }
+        // create_new: a file that appeared since the scan is left alone.
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut f) => {
+                f.write_all(file.contents.as_bytes())
+                    .with_context(|| format!("cannot write {}", path.display()))?;
+                wrote = true;
+                eprintln!(
+                    "readyproof: --fix: created {}  (for {})",
+                    file.path, file.check
+                );
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                eprintln!(
+                    "readyproof: --fix: skipped {}: it already exists",
+                    file.path
+                );
+            }
+            Err(e) => {
+                return Err(e).with_context(|| format!("cannot create {}", path.display()));
+            }
+        }
+    }
+    for skip in &plan.skipped {
+        eprintln!(
+            "readyproof: --fix: left {} to you: {}",
+            skip.check, skip.reason
+        );
+    }
+    if plan.create.is_empty() && plan.skipped.is_empty() {
+        eprintln!("readyproof: --fix: nothing to create");
+    } else if !dry_run && wrote {
+        eprintln!(
+            "readyproof: --fix: the new files hold <!-- readyproof: ... --> placeholders; \
+             fill them in, then delete the comments"
+        );
+    }
+    Ok(wrote)
 }

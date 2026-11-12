@@ -17,7 +17,7 @@ const README_CANDIDATES: &[&str] = &[
     ".github/README.md",
 ];
 
-const CONTRIBUTING_CANDIDATES: &[&str] = &[
+pub(crate) const CONTRIBUTING_CANDIDATES: &[&str] = &[
     "CONTRIBUTING.md",
     "CONTRIBUTING",
     "CONTRIBUTING.rst",
@@ -26,7 +26,7 @@ const CONTRIBUTING_CANDIDATES: &[&str] = &[
     "docs/CONTRIBUTING.md",
 ];
 
-const COC_CANDIDATES: &[&str] = &[
+pub(crate) const COC_CANDIDATES: &[&str] = &[
     "CODE_OF_CONDUCT.md",
     "CODE_OF_CONDUCT",
     "CODE_OF_CONDUCT.rst",
@@ -34,7 +34,7 @@ const COC_CANDIDATES: &[&str] = &[
     "docs/CODE_OF_CONDUCT.md",
 ];
 
-const LICENSE_CANDIDATES: &[&str] = &[
+pub(crate) const LICENSE_CANDIDATES: &[&str] = &[
     "LICENSE",
     "LICENSE.md",
     "LICENSE.txt",

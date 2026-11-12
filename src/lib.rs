@@ -37,6 +37,8 @@
 //! ```
 
 pub mod checks;
+pub mod fix;
+pub mod mapping;
 pub mod model;
 pub mod report;
 pub mod snapshot;

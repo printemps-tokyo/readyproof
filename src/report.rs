@@ -272,6 +272,91 @@ fn quote(s: &str) -> String {
     out
 }
 
+// ---------------------------------------------------------------------------
+// --map
+// ---------------------------------------------------------------------------
+
+/// The Scorecard / SLSA correspondence table as text.
+pub fn render_map_text() -> String {
+    use crate::mapping::{MAPPINGS, NOT_COVERED, SCORECARD_SOURCE, SLSA_SOURCE};
+    let mut out =
+        String::from("readyproof checks and their OpenSSF Scorecard / SLSA counterparts\n\n");
+    out.push_str(&format!(
+        "  {:<26} {:<36} {}\n",
+        "readyproof check", "Scorecard (relation)", "SLSA"
+    ));
+    for m in MAPPINGS {
+        let scorecard = if m.scorecard.is_empty() {
+            "-".to_string()
+        } else {
+            m.scorecard
+                .iter()
+                .map(|(name, rel)| format!("{name} ({})", rel.as_str()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        out.push_str(&format!(
+            "  {:<26} {:<36} {}\n",
+            m.check,
+            scorecard,
+            m.slsa.unwrap_or("-")
+        ));
+        out.push_str(&format!("      {}\n", m.note));
+    }
+    out.push_str("\nScorecard checks readyproof does not cover:\n");
+    for (name, why) in NOT_COVERED {
+        out.push_str(&format!("  {name:<20} {why}\n"));
+    }
+    out.push_str(&format!(
+        "\nA passing readyproof check is not a Scorecard score: Scorecard reads the hosting \
+         platform's API and history, readyproof reads a local checkout.\nScorecard: \
+         {SCORECARD_SOURCE}\nSLSA: {SLSA_SOURCE}\n"
+    ));
+    out
+}
+
+/// The Scorecard / SLSA correspondence table as JSON.
+pub fn render_map_json() -> String {
+    use crate::mapping::{MAPPINGS, NOT_COVERED, SCORECARD_SOURCE, SLSA_SOURCE};
+    let mut out = String::from("{\n  \"checks\": [\n");
+    for (i, m) in MAPPINGS.iter().enumerate() {
+        let scorecard: Vec<String> = m
+            .scorecard
+            .iter()
+            .map(|(name, rel)| {
+                format!(
+                    "{{\"check\": {}, \"relation\": {}}}",
+                    quote(name),
+                    quote(rel.as_str())
+                )
+            })
+            .collect();
+        out.push_str(&format!(
+            "    {{\"check\": {}, \"scorecard\": [{}], \"slsa\": {}, \"note\": {}}}{}\n",
+            quote(m.check),
+            scorecard.join(", "),
+            m.slsa.map_or("null".to_string(), quote),
+            quote(m.note),
+            if i + 1 < MAPPINGS.len() { "," } else { "" }
+        ));
+    }
+    out.push_str("  ],\n  \"scorecard_not_covered\": [\n");
+    for (i, (name, why)) in NOT_COVERED.iter().enumerate() {
+        out.push_str(&format!(
+            "    {{\"check\": {}, \"reason\": {}}}{}\n",
+            quote(name),
+            quote(why),
+            if i + 1 < NOT_COVERED.len() { "," } else { "" }
+        ));
+    }
+    out.push_str(&format!(
+        "  ],\n  \"scorecard_source\": {},\n  \"slsa_source\": {}\n}}\n",
+        quote(SCORECARD_SOURCE),
+        quote(SLSA_SOURCE)
+    ));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

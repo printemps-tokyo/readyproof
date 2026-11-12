@@ -348,7 +348,7 @@ pub fn sbom_basis(snap: &RepoSnapshot) -> Finding {
     )
 }
 
-const UPDATE_CONFIGS: &[&str] = &[
+pub(crate) const UPDATE_CONFIGS: &[&str] = &[
     ".github/dependabot.yml",
     ".github/dependabot.yaml",
     "renovate.json",

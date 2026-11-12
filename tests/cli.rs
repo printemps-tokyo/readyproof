@@ -233,3 +233,59 @@ fn secret_values_never_reach_stdout_or_stderr() {
     assert!(stdout(&report).contains(".env.production (environment file)"));
     assert_eq!(report.status.code(), Some(1));
 }
+
+#[test]
+fn map_prints_the_scorecard_and_slsa_table() {
+    let out = Command::new(BIN).arg("--map").output().expect("run");
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("disclosure-policy"));
+    assert!(text.contains("Security-Policy (same)"));
+    assert!(text.contains("Build L1-L2"));
+    assert!(text.contains("Branch-Protection"));
+
+    let json = Command::new(BIN)
+        .args(["--map", "--json"])
+        .output()
+        .expect("run");
+    let doc = String::from_utf8(json.stdout).unwrap();
+    assert!(doc.contains("\"scorecard_not_covered\""));
+    assert!(doc.contains("\"relation\": \"partial\""));
+}
+
+#[test]
+fn fix_creates_starter_files_without_overwriting() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+    fs::write(dir.path().join("CONTRIBUTING.md"), "# mine\n").unwrap();
+
+    let dry = Command::new(BIN)
+        .arg(dir.path())
+        .args(["--fix", "--dry-run", "--quiet"])
+        .output()
+        .expect("run");
+    let log = String::from_utf8(dry.stderr).unwrap();
+    assert!(log.contains("would create SECURITY.md"), "{log}");
+    assert!(!dir.path().join("SECURITY.md").exists());
+
+    let out = Command::new(BIN)
+        .arg(dir.path())
+        .args(["--fix", "--json"])
+        .output()
+        .expect("run");
+    let log = String::from_utf8(out.stderr).unwrap();
+    assert!(log.contains("created SECURITY.md"), "{log}");
+    assert!(log.contains("left license-present to you"), "{log}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("CONTRIBUTING.md")).unwrap(),
+        "# mine\n"
+    );
+    let dependabot = fs::read_to_string(dir.path().join(".github/dependabot.yml")).unwrap();
+    assert!(dependabot.contains("package-ecosystem: \"cargo\""));
+    assert!(dir.path().join("CODE_OF_CONDUCT.md").exists());
+    // The report is the audit after the fix: the policy now exists, but its
+    // placeholder address is still flagged.
+    let doc = String::from_utf8(out.stdout).unwrap();
+    assert!(doc.contains("Security policy present"), "{doc}");
+    assert!(doc.contains("placeholder"), "{doc}");
+}
